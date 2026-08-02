@@ -114,10 +114,22 @@ def run_uploads(record: dict):
 
     youtube = get_youtube_service(client_id, client_secret, refresh_token)
 
+    # How many chunks to upload in this single run. Defaults to 1 so that
+    # every scheduled run (every 3 hours) uploads exactly one video/chunk,
+    # instead of draining the whole backlog (and the daily quota) at once.
+    max_uploads_per_run = int(os.environ.get("MAX_UPLOADS_PER_RUN", "1"))
+
     any_uploaded = False
+    uploads_done_this_run = 0
 
     for video_name, chunk_paths in discover_videos(OUTPUT_DIR):
+        if uploads_done_this_run >= max_uploads_per_run:
+            break
+
         for chunk_path in chunk_paths:
+            if uploads_done_this_run >= max_uploads_per_run:
+                break
+
             chunk_name = os.path.splitext(os.path.basename(chunk_path))[0]
             status = get_chunk_status(record, video_name, chunk_name)
 
@@ -161,6 +173,7 @@ def run_uploads(record: dict):
                 mark_uploaded(record, video_name, chunk_name, youtube_id)
                 logger.info("Uploaded '%s' -> https://youtube.com/shorts/%s", chunk_name, youtube_id)
                 any_uploaded = True
+                uploads_done_this_run += 1
             except Exception as e:
                 logger.exception("Failed to upload '%s'", chunk_name)
                 mark_failed(record, video_name, chunk_name, str(e))
