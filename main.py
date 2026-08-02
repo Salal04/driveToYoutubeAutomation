@@ -26,7 +26,9 @@ Rules enforced:
 
 import logging
 import os
+import re
 import sys
+import tempfile
 
 from drive_sync import sync_from_drive
 from record_manager import (
@@ -39,6 +41,7 @@ from record_manager import (
     mark_uploading,
     save_record,
 )
+from video_convert import ensure_vertical
 from youtube_uploader import get_youtube_service, upload_video
 
 logging.basicConfig(
@@ -50,6 +53,23 @@ logger = logging.getLogger("main")
 OUTPUT_DIR = os.environ.get("LOCAL_OUTPUT_DIR", "output")
 VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v")
 CHUNK_FOLDER_NAMES = ("chunk_videos", "chunk videos")
+
+_VERSION_SUFFIX_RE = re.compile(r"_v\d+$", re.IGNORECASE)
+
+
+def prettify_video_name(video_name: str) -> str:
+    """Turns an internal folder name like 'yaadon-ki-tajir_v3' into a
+    display-friendly title fragment like 'yaadon-ki-tajir', without ever
+    exposing raw chunk filenames to viewers."""
+    name = _VERSION_SUFFIX_RE.sub("", video_name)
+    name = name.replace("_", " ").strip()
+    return name or video_name
+
+
+def part_number_for(chunk_filename: str) -> int:
+    """Extracts the numeric chunk index (e.g. 'video-chunk14.mp4' -> 14)
+    to use as the human-facing 'Part N' label."""
+    return chunk_sort_key(chunk_filename)[0]
 
 
 def discover_videos(output_dir: str):
@@ -143,6 +163,7 @@ def run_uploads(record: dict):
 
     any_uploaded = False
     uploads_done_this_run = 0
+    convert_work_dir = tempfile.mkdtemp(prefix="vertical_convert_")
 
     for video_name, chunk_paths in discover_videos(OUTPUT_DIR):
         if uploads_done_this_run >= max_uploads_per_run:
@@ -184,12 +205,18 @@ def run_uploads(record: dict):
             mark_uploading(record, video_name, chunk_name)
             save_record(record, DEFAULT_RECORD_PATH)  # persist BEFORE upload starts
 
+            display_name = prettify_video_name(video_name)
+            part_number = part_number_for(os.path.basename(chunk_path))
+            upload_path = chunk_path
+
             try:
+                upload_path = ensure_vertical(chunk_path, work_dir=convert_work_dir)
+
                 youtube_id = upload_video(
                     youtube,
-                    chunk_path,
-                    title=f"{video_name} - {chunk_name} #Shorts",
-                    description=f"{video_name}\n\n#Shorts",
+                    upload_path,
+                    title=f"{display_name} - Part {part_number} #Shorts",
+                    description=f"{display_name} - Part {part_number}\n\n#Shorts",
                     privacy_status=privacy_status,
                 )
                 mark_uploaded(record, video_name, chunk_name, youtube_id)
@@ -202,6 +229,13 @@ def run_uploads(record: dict):
                 save_record(record, DEFAULT_RECORD_PATH)
                 # Don't upload later chunks of this video out of order after a failure
                 break
+            finally:
+                # Clean up the converted temp file (if one was made) to save disk space
+                if upload_path != chunk_path and os.path.exists(upload_path):
+                    try:
+                        os.remove(upload_path)
+                    except OSError:
+                        pass
 
             save_record(record, DEFAULT_RECORD_PATH)  # persist AFTER upload succeeds
 
