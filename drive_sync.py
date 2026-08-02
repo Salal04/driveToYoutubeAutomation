@@ -74,15 +74,28 @@ def _download_file(service, file_id: str, dest_path: str):
                 logger.info("  downloading %s: %d%%", os.path.basename(dest_path), int(status.progress() * 100))
 
 
-def sync_folder(service, drive_folder_id: str, local_path: str):
+def sync_folder(service, drive_folder_id: str, local_path: str, depth: int = 0):
     """Recursively mirror drive_folder_id -> local_path. Skips files that
     already exist locally with the same size (cheap re-run safety)."""
     os.makedirs(local_path, exist_ok=True)
-    for item in _list_children(service, drive_folder_id):
+    children = _list_children(service, drive_folder_id)
+
+    if depth == 0 and not children:
+        logger.warning(
+            "Drive folder id '%s' returned ZERO items. This usually means: "
+            "(1) the folder ID is wrong/stale, (2) the service account no "
+            "longer has Viewer access to it, or (3) the folder is genuinely "
+            "empty. Double-check the DRIVE_ROOT_FOLDER_ID secret and that "
+            "the folder is still shared with the service account's "
+            "client_email.",
+            drive_folder_id,
+        )
+
+    for item in children:
         name = item["name"]
         target = os.path.join(local_path, name)
         if item["mimeType"] == FOLDER_MIME:
-            sync_folder(service, item["id"], target)
+            sync_folder(service, item["id"], target, depth=depth + 1)
         else:
             remote_size = int(item.get("size", 0) or 0)
             if os.path.exists(target) and remote_size and os.path.getsize(target) == remote_size:
