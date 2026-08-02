@@ -41,6 +41,7 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           YOUTUBE_PRIVACY_STATUS: ${{ vars.YOUTUBE_PRIVACY_STATUS || 'public' }}
+          MAX_UPLOADS_PER_RUN: ${{ vars.MAX_UPLOADS_PER_RUN || '1' }}
         run: python main.py
 
       - name: Remove secret file before commit
