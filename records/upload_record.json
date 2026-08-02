@@ -2,9 +2,10 @@
   "yaadon-ki-tajir_v3": {
     "chunks": {
       "yaadon-ki-tajir-chunk1": {
-        "error": "('invalid_client: The OAuth client was not found.', {'error': 'invalid_client', 'error_description': 'The OAuth client was not found.'})",
-        "failed_at": "2026-08-02T15:59:43.271722+00:00",
-        "status": "failed"
+        "status": "uploaded",
+        "uploaded_at": "2026-08-02T18:18:00.442554+00:00",
+        "youtube_id": "Lgq6M1Yjegk",
+        "youtube_url": "https://youtube.com/shorts/Lgq6M1Yjegk"
       }
     }
   },
