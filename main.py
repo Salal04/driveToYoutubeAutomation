@@ -52,38 +52,60 @@ VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v")
 CHUNK_FOLDER_NAMES = ("chunk_videos", "chunk videos")
 
 
-def find_chunk_folder(video_dir: str):
-    for name in CHUNK_FOLDER_NAMES:
-        candidate = os.path.join(video_dir, name)
-        if os.path.isdir(candidate):
-            return candidate
-    return None
-
-
 def discover_videos(output_dir: str):
-    """Yields (video_name, [chunk_file_paths_in_order]) for every video
-    folder found under output_dir."""
+    """Yields (video_name, [chunk_file_paths_in_order]) for every
+    chunk_videos folder found ANYWHERE under output_dir, at any nesting
+    depth. This makes the pipeline tolerant of extra wrapper folders
+    (e.g. Drive shared at a parent level, extra "output/output" nesting)
+    and unrelated sibling files/folders (assets/, sources/, *.json, etc.)
+    -- it only cares about folders literally named 'chunk_videos'.
+
+    video_name is taken from the immediate parent folder of chunk_videos
+    (e.g. '.../yaadon-ki-tajir_v3/chunk_videos/...' -> 'yaadon-ki-tajir_v3').
+    If two different chunk_videos folders share the same parent folder
+    name, the full relative path is used instead to avoid collisions in
+    the ledger.
+    """
     if not os.path.isdir(output_dir):
         logger.warning("Output dir '%s' does not exist yet.", output_dir)
         return
 
-    for video_name in sorted(os.listdir(output_dir)):
-        video_dir = os.path.join(output_dir, video_name)
-        if not os.path.isdir(video_dir):
-            continue
+    found = []  # (video_name, chunk_folder_path)
+    seen_names = {}
 
-        chunk_folder = find_chunk_folder(video_dir)
-        if not chunk_folder:
-            logger.warning("No chunk_videos folder found for '%s', skipping.", video_name)
-            continue
+    for root, dirs, _files in os.walk(output_dir):
+        base = os.path.basename(root)
+        if base in CHUNK_FOLDER_NAMES:
+            parent_name = os.path.basename(os.path.dirname(root))
+            video_name = parent_name or base
+            seen_names.setdefault(video_name, []).append(root)
+            # Don't descend into chunk_videos looking for nested chunk_videos
+            dirs[:] = []
 
-        chunk_files = [
-            f for f in os.listdir(chunk_folder)
-            if f.lower().endswith(VIDEO_EXTENSIONS)
-        ]
-        chunk_files.sort(key=chunk_sort_key)
+    for video_name, folders in seen_names.items():
+        for chunk_folder in sorted(folders):
+            # Disambiguate if the same parent-folder name appears more than
+            # once anywhere in the tree (rare, but safer than silently
+            # merging their ledgers).
+            key = video_name
+            if len(folders) > 1:
+                key = os.path.relpath(os.path.dirname(chunk_folder), output_dir)
 
-        yield video_name, [os.path.join(chunk_folder, f) for f in chunk_files]
+            chunk_files = [
+                f for f in os.listdir(chunk_folder)
+                if f.lower().endswith(VIDEO_EXTENSIONS)
+            ]
+            chunk_files.sort(key=chunk_sort_key)
+
+            if not chunk_files:
+                logger.warning("chunk_videos folder '%s' has no video files, skipping.", chunk_folder)
+                continue
+
+            found.append((key, [os.path.join(chunk_folder, f) for f in chunk_files]))
+
+    found.sort(key=lambda item: item[0])
+    for video_name, chunk_paths in found:
+        yield video_name, chunk_paths
 
 
 def run_drive_sync():
