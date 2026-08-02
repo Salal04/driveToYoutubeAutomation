@@ -59,5 +59,22 @@ jobs:
           git config user.name "insta-uploader-bot"
           git config user.email "actions@users.noreply.github.com"
           git add records/upload_record.json
-          git diff --cached --quiet || git commit -m "Update upload ledger [skip ci]"
-          git push
+
+          if git diff --cached --quiet; then
+            echo "No ledger changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update upload ledger [skip ci]"
+
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "Push succeeded."
+              exit 0
+            fi
+            echo "Push attempt $i failed, retrying in a few seconds..."
+            sleep $((RANDOM % 5 + 2))
+          done
+
+          echo "Failed to push ledger after multiple retries."
+          exit 1
