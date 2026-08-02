@@ -110,7 +110,7 @@ def discover_videos(output_dir: str):
 
 def run_drive_sync():
     service_account_path = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json")
-    drive_folder_id = os.environ.get("DRIVE_ROOT_FOLDER_ID")
+    drive_folder_id = os.environ.get("DRIVE_ROOT_FOLDER_ID", "").strip()
 
     if not drive_folder_id:
         logger.info("DRIVE_ROOT_FOLDER_ID not set, skipping Drive sync (using local '%s' as-is).", OUTPUT_DIR)
